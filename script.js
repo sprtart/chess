@@ -725,15 +725,20 @@ function initVK() {
             vkUserId = user.id;
             updatePlayerProfileUI();
 
-            // --- НАЧАЛО ИСПРАВЛЕНИЯ: УМНЫЙ ПОИСК ROOM ID ---
+            // --- ОБНОВЛЕННЫЙ, УМНЫЙ ПОИСК ROOM ID ДЛЯ СМАРТФОНОВ ---
             const urlParams = new URLSearchParams(window.location.search);
             
-            // Ищем ID везде: в хэше, в параметре room и в системном параметре ВК vk_hash
-            let rawRoomId = window.location.hash.replace('#', '') || 
-                           urlParams.get('room') || 
-                           urlParams.get('vk_hash');
+            // В мобильном ВК хэш из ссылки часто прячется в vk_hash
+            let rawRoomId = urlParams.get('vk_hash') || 
+                            urlParams.get('room') || 
+                            window.location.hash.replace('#', '');
 
             let roomId = null;
+            if (rawRoomId) {
+                // Очищаем от мусора (мобильный ВК часто приклеивает &... или %26...)
+                roomId = decodeURIComponent(rawRoomId).split('&')[0]; 
+            }
+            // ------------------------------------------------------
             if (rawRoomId) {
                 // Очищаем от мусора (ВК иногда приклеивает &... к строке)
                 roomId = rawRoomId.split('&')[0]; 
@@ -1150,6 +1155,18 @@ function resignGame() {
 }
 
 function startNewGame() {
+
+        const startMenu = document.getElementById('start-menu');
+    if (startMenu) {
+        startMenu.style.display = 'none';
+        startMenu.classList.add('hidden');
+    }
+    const gameContainer = document.querySelector('.game-container');
+    if (gameContainer) {
+        gameContainer.style.display = 'flex';
+    }
+    handleResponsiveLayout(); // Пересчитываем размеры
+
     lastMoveSquares = [];
     localStorage.setItem('gameInProgress', 'true');
     game = new Chess();
@@ -1369,13 +1386,22 @@ async function createPvPRoom() {
     }
 
     // ТВОЙ_ID_ВК — замени на цифры из настроек приложения
-    const appId = '1234567'; 
-    const shareLink = `https://vk.com/app${appId}?room=${currentRoomId}#${currentRoomId}`;
+    const appId = '54514087'; 
+    // const shareLink = `https://vk.com/app${appId}?room=${currentRoomId}#${currentRoomId}`;
+    // console.log("Ссылка для друга:", shareLink);    
+    // vkBridge.send("VKWebAppShare", { 
+    //     link: shareLink, 
+    //     message: "Давай сыграем в шахматы! Жду твоего хода. ♟️" 
+    // });
+
+    const shareLink = `https://vk.com/app${appId}#${currentRoomId}`;
+    
     console.log("Ссылка для друга:", shareLink);    
     vkBridge.send("VKWebAppShare", { 
         link: shareLink, 
         message: "Давай сыграем в шахматы! Жду твоего хода. ♟️" 
     });
+
 
     joinRoom(currentRoomId);
     isPvPSetup = false; // Сбрасываем флаг для бота
@@ -1642,7 +1668,7 @@ function finalizeMove(from, to, promotion = 'q') {
             // В PvP режиме просто блокируем доску, так как теперь ход противника
             isLocked = true; 
             // И отправляем ход в Supabase (этот блок у тебя уже должен быть)
-            syncMoveToSupabase(from, to, promotion);
+            //syncMoveToSupabase(from, to, promotion);
         }
     }
 }
@@ -3093,18 +3119,18 @@ function startGameVsFriend(isResumed = false) {
 
 
 // Внутри finalizeMove(from, to, promotion)
-async function syncMoveToSupabase() {
-    if (gameMode === 'pvp' && currentRoomId) {
-        await supabaseClient
-            .from('rooms')
-            .update({ 
-                fen: game.fen(), 
-                last_move: `${from}-${to}`,
-                turn: game.turn()
-            })
-            .eq('id', currentRoomId);
-    }
-}
+// async function syncMoveToSupabase() {
+//     if (gameMode === 'pvp' && currentRoomId) {
+//         await supabaseClient
+//             .from('rooms')
+//             .update({ 
+//                 fen: game.fen(), 
+//                 last_move: `${from}-${to}`,
+//                 turn: game.turn()
+//             })
+//             .eq('id', currentRoomId);
+//     }
+// }
 
 
 
