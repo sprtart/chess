@@ -725,15 +725,7 @@ function initVK() {
     lang = browserLang.startsWith('ru') ? 'ru' : 'en';
     applyTranslations(); 
 
-    // 1. МЕНЯЕМ ПОДЗАГОЛОВОК, ЧТОБЫ УБЕДИТЬСЯ В СБРОСЕ КЭША
-    const subtitle = document.getElementById('gm-subtitle');
-    if (subtitle) subtitle.textContent = "ВЕРСИЯ: ДЕБАГ 2.0";
-
-    // 2. СРАЗУ ПОКАЗЫВАЕМ ПОЛНЫЙ URL ПРИ ЗАПУСКЕ
-    alert("🔗 Полная ссылка при запуске:\n" + window.location.href);
-
     if (!vkBridge || window.location.protocol === 'file:') {
-        alert("⚠️ VK Bridge не найден (оффлайн режим).");
         loadStats();
         showStartMenu();
         renderLeaderboard();
@@ -743,71 +735,17 @@ function initVK() {
     vkBridge.send('VKWebAppInit').then(() => {
         isVkMode = true;
 
-        vkBridge.send('VKWebAppGetUserInfo').then(async (user) => {
+        vkBridge.send('VKWebAppGetUserInfo').then((user) => {
             player = user; 
             vkUserId = user.id;
             updatePlayerProfileUI();
 
-            alert("✅ Профиль ВК получен: " + user.first_name);
-
-            // Ищем комнату
-const urlParams = new URLSearchParams(window.location.search);
-const roomId = urlParams.get('vk_ref') || 
-               (window.location.href.match(/(room_[a-zA-Z0-9]+)/) || [])[1] || 
-               null;
-
-            if (roomId) {
-                alert("🔍 НАЙДЕНА КОМНАТА: " + roomId);
-                
-                if (supabaseClient) {
-                    const loader = document.getElementById('loading-screen');
-                    if (loader) loader.style.display = 'none';
-
-                    const { data: room, error } = await supabaseClient
-                        .from('rooms')
-                        .select('*')
-                        .eq('id', roomId)
-                        .single();
-
-                    if (room) {
-                        alert("✅ КОМНАТА ЗАГРУЖЕНА ИЗ БАЗЫ!");
-                        const myId = String(vkUserId);
-
-                        if (myId === room.white_id) { myColor = 'w'; } 
-                        else if (myId === room.black_id) { myColor = 'b'; } 
-                        else if (!room.black_id && room.white_id) {
-                            myColor = 'b';
-                            await supabaseClient.from('rooms').update({ 
-                                black_id: myId, black_name: player.first_name, black_avatar: player.photo_100
-                            }).eq('id', roomId);
-                        } 
-                        else if (!room.white_id && room.black_id) {
-                            myColor = 'w';
-                            await supabaseClient.from('rooms').update({ 
-                                white_id: myId, white_name: player.first_name, white_avatar: player.photo_100
-                            }).eq('id', roomId);
-                        } 
-
-                        isBoardFlipped = (myColor === 'b');
-                        game.load(room.fen);
-                        joinRoom(roomId);
-                        return; 
-                    } else {
-                        alert("❌ ОШИБКА БАЗЫ ДАННЫХ:\n" + JSON.stringify(error));
-                    }
-                } else {
-                    alert("❌ ОШИБКА: Supabase не подключен!");
-                }
-            } else {
-                alert("⚠️ КОМНАТА НЕ НАЙДЕНА В ССЫЛКЕ! Открываю меню.");
-            }
-
             loadFromCloud();
             renderLeaderboard();
-            showStartMenu(); // На всякий случай дублируем открытие меню
+            showStartMenu();
 
         }).catch(err => {
-            alert("❌ ОШИБКА ПРОФИЛЯ: " + err.message);
+            console.warn('Ошибка профиля ВК:', err);
             loadStats();
             showStartMenu();
         });
