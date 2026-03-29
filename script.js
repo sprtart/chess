@@ -1355,15 +1355,11 @@ async function createPvPRoom() {
     myColor = creatorColor;
 
     // Подготавливаем данные для комнаты
-    // Если мы выбрали Белых, записываем себя в white_id, если Черных — в black_id
     const roomData = {
         id: currentRoomId,
         fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
         turn: 'w',
-        time_limit: 0,
-        [myColor === 'w' ? 'white_id' : 'black_id']: String(vkUserId),
-        [myColor === 'w' ? 'white_name' : 'black_name']: player.first_name,
-        [myColor === 'w' ? 'white_avatar' : 'black_avatar']: player.photo_100
+        time_limit: 0,[myColor === 'w' ? 'white_id' : 'black_id']: String(vkUserId),[myColor === 'w' ? 'white_name' : 'black_name']: player.first_name,[myColor === 'w' ? 'white_avatar' : 'black_avatar']: player.photo_100
     };
 
     const { error } = await supabaseClient.from('rooms').insert(roomData);
@@ -1373,28 +1369,31 @@ async function createPvPRoom() {
         return;
     }
 
-    // ТВОЙ_ID_ВК — замени на цифры из настроек приложения
+    // ТВОЙ ID ПРИЛОЖЕНИЯ
     const appId = '54514087'; 
-    // const shareLink = `https://vk.com/app${appId}?room=${currentRoomId}#${currentRoomId}`;
-    // console.log("Ссылка для друга:", shareLink);    
-    // vkBridge.send("VKWebAppShare", { 
-    //     link: shareLink, 
-    //     message: "Давай сыграем в шахматы! Жду твоего хода. ♟️" 
-    // });
-
-    const shareLink = `https://vk.com/app${appId}#${currentRoomId}`;
     
-    console.log("Ссылка для друга:", shareLink);    
-    vkBridge.send("VKWebAppShare", { 
-        link: shareLink, 
-        message: "Давай сыграем в шахматы! Жду твоего хода. ♟️" 
-    });
+    // Формируем чистую ссылку (без ?room=)
+    const shareLink = `https://vk.com/app${appId}#${currentRoomId}`;
+    const inviteText = `Давай сыграем в шахматы! Жду твоего хода. ♟️\n${shareLink}`;
 
+    console.log("Ссылка для друга:", shareLink);
+
+    // 1. КОПИРУЕМ ТЕКСТ В БУФЕР ОБМЕНА
+    // Это решит проблему с тем, что VKWebAppShare режет сообщения.
+    // Игрок сможет просто "Вставить" текст в чате.
+    if (vkBridge.supports("VKWebAppCopyText")) {
+        vkBridge.send("VKWebAppCopyText", { text: inviteText })
+            .then(() => console.log("Текст скопирован в буфер"))
+            .catch((err) => console.log("Не удалось скопировать:", err));
+    }
+
+    // 2. ВЫЗЫВАЕМ СТАНДАРТНОЕ ОКНО "ПОДЕЛИТЬСЯ"
+    // Здесь оставляем только link, потому что message ВК всё равно удалит.
+    vkBridge.send("VKWebAppShare", { link: shareLink });
 
     joinRoom(currentRoomId);
-    isPvPSetup = false; // Сбрасываем флаг для бота
+    isPvPSetup = false; 
 }
-
 
 // --- 3. ОТРИСОВКА ---
 function renderBoard() {
