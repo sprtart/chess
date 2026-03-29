@@ -710,6 +710,11 @@ function initVK() {
     lang = browserLang.startsWith('ru') ? 'ru' : 'en';
     applyTranslations(); 
 
+
+        // 1. МЕНЯЕМ ПОДЗАГОЛОВОК, ЧТОБЫ УБЕДИТЬСЯ В СБРОСЕ КЭША
+    const subtitle = document.getElementById('gm-subtitle');
+    if (subtitle) subtitle.textContent = "ВЕРСИЯ: ДЕБАГ 2.0";
+
     // =========================================================
     // ВАЖНО: Читаем и запоминаем ссылку СРАЗУ ЖЕ ПРИ СТАРТЕ!
     // Потому что через полсекунды ВК удалит хэш из адресной строки.
