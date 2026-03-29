@@ -725,72 +725,100 @@ function initVK() {
             vkUserId = user.id;
             updatePlayerProfileUI();
 
-            // =========================================================
-            // --- НАЧАЛО: БРОНЕБОЙНЫЙ ПОИСК ROOM ID (БЕЗ КОСТЫЛЕЙ) ---
-            // Сканируем вообще ВЕСЬ адрес ссылки на наличие "room_..."
-            const roomMatch = window.location.href.match(/(room_[a-zA-Z0-9]+)/);
-            const roomId = roomMatch ? roomMatch[1] : null;
-            // --- КОНЕЦ: БРОНЕБОЙНЫЙ ПОИСК ---
-            // =========================================================
-
-            if (roomId) { // Больше не нужно писать startsWith('room_'), регулярка уже всё сделала
-                console.log("Умная проверка PvP комнаты:", roomId);
-                
-                if (supabaseClient) {
-                    const loader = document.getElementById('loading-screen');
-                    if (loader) loader.style.display = 'none';
-
-                    const { data: room, error } = await supabaseClient
-                        .from('rooms')
-                        .select('*')
-                        .eq('id', roomId)
-                        .single();
-
-                    if (room) {
-                        const myId = String(vkUserId);
-
-                        if (myId === room.white_id) {
-                            myColor = 'w';
-                        } 
-                        else if (myId === room.black_id) {
-                            myColor = 'b';
-                        } 
-                        else if (!room.black_id && room.white_id) {
-                            myColor = 'b';
-                            await supabaseClient.from('rooms').update({ 
-                                black_id: myId,
-                                black_name: player.first_name,
-                                black_avatar: player.photo_100
-                            }).eq('id', roomId);
-                        } 
-                        else if (!room.white_id && room.black_id) {
-                            myColor = 'w';
-                            await supabaseClient.from('rooms').update({ 
-                                white_id: myId,
-                                white_name: player.first_name,
-                                white_avatar: player.photo_100
-                            }).eq('id', roomId);
-                        } 
-                        else {
-                            alert("Эта комната уже заполнена.");
-                            showStartMenu();
-                            loadFromCloud();
-                            return;
-                        }
-
-                        isBoardFlipped = (myColor === 'b');
-                        game.load(room.fen);
-                        joinRoom(roomId);
-                        return; 
-                    }
-                }
+            // 1. ПЫТАЕМСЯ НАЙТИ ID КОМНАТЫ ВСЕМИ СПОСОБАМИ
+            let roomId = null;
+            const urlParams = new URLSearchParams(window.location.search);
+            roomId = urlParams.get('vk_hash'); // Способ 1: берем из спец. параметра мобильного ВК
+            
+            if (!roomId && window.location.hash) {
+                roomId = window.location.hash.replace('#', ''); // Способ 2: берем из обычного хэша
+            }
+            if (!roomId) {
+                const match = window.location.href.match(/(room_[a-zA-Z0-9]+)/); // Способ 3: бронебойная регулярка
+                if (match) roomId = match[1];
             }
 
+            if (roomId) {
+                // АЛЕРТ №1: Проверяем, нашел ли телефон ссылку
+                alert("🔍 ШАГ 1: Нашёлся ID комнаты: " + roomId);
+
+                // Проверяем, успела ли загрузиться библиотека БД (Supabase)
+                let activeClient = supabaseClient;
+                if (!activeClient && window.supabase) {
+                    activeClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+                }
+
+                if (!activeClient) {
+                    // АЛЕРТ №2: Ошибка загрузки скриптов
+                    alert("❌ ШАГ 2 ОШИБКА: База данных не успела загрузиться!");
+                    loadFromCloud();
+                    return;
+                }
+
+                const loader = document.getElementById('loading-screen');
+                if (loader) loader.style.display = 'none';
+
+                // Ищем комнату в базе
+                const { data: room, error } = await activeClient
+                    .from('rooms')
+                    .select('*')
+                    .eq('id', roomId)
+                    .single();
+
+                if (error || !room) {
+                    // АЛЕРТ №3: Ошибка доступа к данным (база не отдала комнату)
+                    alert("❌ ШАГ 3 ОШИБКА БД:\nКомната не найдена.\nОтвет сервера: " + JSON.stringify(error));
+                    showStartMenu();
+                    loadFromCloud();
+                    return;
+                }
+
+                // АЛЕРТ №4: Всё идеально
+                alert("✅ ШАГ 4: Комната найдена в базе! Идет вход...");
+
+                const myId = String(vkUserId);
+
+                if (myId === room.white_id) {
+                    myColor = 'w';
+                } 
+                else if (myId === room.black_id) {
+                    myColor = 'b';
+                } 
+                else if (!room.black_id && room.white_id) {
+                    myColor = 'b';
+                    await activeClient.from('rooms').update({ 
+                        black_id: myId,
+                        black_name: player.first_name,
+                        black_avatar: player.photo_100
+                    }).eq('id', roomId);
+                } 
+                else if (!room.white_id && room.black_id) {
+                    myColor = 'w';
+                    await activeClient.from('rooms').update({ 
+                        white_id: myId,
+                        white_name: player.first_name,
+                        white_avatar: player.photo_100
+                    }).eq('id', roomId);
+                } 
+                else {
+                    alert("⚠️ Эта комната уже заполнена.");
+                    showStartMenu();
+                    loadFromCloud();
+                    return;
+                }
+
+                isBoardFlipped = (myColor === 'b');
+                game.load(room.fen);
+                joinRoom(roomId);
+                return; 
+            }
+
+            // Если ссылки нет — грузим главное меню
             loadFromCloud();
             renderLeaderboard();
 
         }).catch(err => {
-            console.warn('Ошибка профиля:', err);
+            alert("❌ Ошибка получения профиля ВК: " + err.message);
             loadStats();
             showStartMenu();
         });
