@@ -2950,22 +2950,29 @@ async function joinRoom(roomId) {
         .eq('id', roomId)
         .single();
 
-if (room) {
-    selectedTimeMinutes = room.time_limit || 0;
-    console.log("Установлен лимит времени из базы:", selectedTimeMinutes);
-    
-    // Обновляем таймеры на экране
-    if (selectedTimeMinutes > 0) {
-        playerTimeLeft = selectedTimeMinutes * 60;
-        aiTimeLeft = selectedTimeMinutes * 60;
+    if (room) {
+        selectedTimeMinutes = room.time_limit || 0;
+        console.log("Установлен лимит времени из базы:", selectedTimeMinutes);
+        
+        if (selectedTimeMinutes > 0) {
+            playerTimeLeft = selectedTimeMinutes * 60;
+            aiTimeLeft = selectedTimeMinutes * 60;
+        }
+        
+        if (!myColor) { 
+            if (room.white_id && !room.black_id) myColor = 'b';
+            else if (room.black_id && !room.white_id) myColor = 'w';
+        }
+
+        // Сразу загружаем текущий FEN из базы
+        game.load(room.fen);
+        
+        // Подсвечиваем последний сделанный ход, если он был
+        if (room.last_move) {
+            const [from, to] = room.last_move.split('-');
+            lastMoveSquares = [from, to];
+        }
     }
-    
-    // Если создатель выбрал черный цвет, значит мы (гость) будем БЕЛЫМИ
-    if (!myColor) { // Если цвет еще не определен (мы гость)
-        if (room.white_id && !room.black_id) myColor = 'b';
-        else if (room.black_id && !room.white_id) myColor = 'w';
-    }
-}
 
     // 2. ПОДПИСКА: Теперь слушаем будущие изменения
     const roomChannel = supabaseClient
@@ -2975,29 +2982,48 @@ if (room) {
             schema: 'public', 
             table: 'rooms', 
             filter: `id=eq.${roomId}` 
-        }, payload => {
+        }, async (payload) => { // <--- ДОБАВИЛИ async здесь!
             const newData = payload.new;
             
-            // Если пришел новый ход
+            // Если пришел новый ход (FEN изменился)
             if (newData.fen !== game.fen()) {
+                console.log("Получен ход противника:", newData.last_move);
+
+                // --- АНИМАЦИЯ ---
+                if (newData.last_move) {
+                    const [f, t] = newData.last_move.split('-');
+                    isLocked = true; // Блокируем клики, пока фигура едет
+                    await animateVisualMove(f, t, 300); // Ждем завершения анимации
+                }
+
+                // Обновляем движок игры
                 game.load(newData.fen);
+                
+                // Ставим желтую подсветку на клетки хода
+                if (newData.last_move) {
+                    const [f, t] = newData.last_move.split('-');
+                    lastMoveSquares = [f, t];
+                }
+
                 renderBoard();
                 checkStatus();
+                
+                // Разблокируем доску, если теперь наш ход
                 isLocked = (game.turn() !== myColor);
                 
-                // Добавляем в историю
+                // Обновляем историю
                 fenHistory.push(game.fen());
                 currentViewIndex = fenHistory.length - 1;
                 updateMoveHistory();
                 playSound(audioMove);
             }
             
-            // Если обновились данные игрока (например, зашел второй)
+            // Обновляем аватарку и имя, если зашел второй игрок
             updateOpponentProfileFromRoom();
         })
         .subscribe();
 
-    // Переключаем экран (ВАЖНО: передаем true, чтобы игра знала, что доску сбрасывать НЕ НАДО)
+    // Переключаем экран
     startGameVsFriend(true);
 }
 
