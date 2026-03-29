@@ -725,27 +725,15 @@ function initVK() {
             vkUserId = user.id;
             updatePlayerProfileUI();
 
-            // --- ОБНОВЛЕННЫЙ, УМНЫЙ ПОИСК ROOM ID ДЛЯ СМАРТФОНОВ ---
-            const urlParams = new URLSearchParams(window.location.search);
-            
-            // В мобильном ВК хэш из ссылки часто прячется в vk_hash
-            let rawRoomId = urlParams.get('vk_hash') || 
-                            urlParams.get('room') || 
-                            window.location.hash.replace('#', '');
+            // =========================================================
+            // --- НАЧАЛО: БРОНЕБОЙНЫЙ ПОИСК ROOM ID (БЕЗ КОСТЫЛЕЙ) ---
+            // Сканируем вообще ВЕСЬ адрес ссылки на наличие "room_..."
+            const roomMatch = window.location.href.match(/(room_[a-zA-Z0-9]+)/);
+            const roomId = roomMatch ? roomMatch[1] : null;
+            // --- КОНЕЦ: БРОНЕБОЙНЫЙ ПОИСК ---
+            // =========================================================
 
-            let roomId = null;
-            if (rawRoomId) {
-                // Очищаем от мусора (мобильный ВК часто приклеивает &... или %26...)
-                roomId = decodeURIComponent(rawRoomId).split('&')[0]; 
-            }
-            // ------------------------------------------------------
-            if (rawRoomId) {
-                // Очищаем от мусора (ВК иногда приклеивает &... к строке)
-                roomId = rawRoomId.split('&')[0]; 
-            }
-            // --- КОНЕЦ ИСПРАВЛЕНИЯ ---
-
-            if (roomId && roomId.startsWith('room_')) {
+            if (roomId) { // Больше не нужно писать startsWith('room_'), регулярка уже всё сделала
                 console.log("Умная проверка PvP комнаты:", roomId);
                 
                 if (supabaseClient) {
