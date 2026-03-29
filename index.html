@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+
+<!-- Подключение SDK VK Bridge и Supabase -->
+<script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script src="chess.js"></script>
+    <title id="page-title">Шахматы</title>
+    <link rel="stylesheet" href="styles2.css">
+    <style>
+        .btn-hint.disabled {
+            opacity: 0.6;
+            pointer-events: none;
+            background-color: #888;
+        }
+    </style>
+</head>
+<body>
+
+<div id="loading-screen">
+    <img src="img/logo.png" alt="Logo" class="loader-logo">
+    <div class="progress-container">
+        <div id="loading-bar"></div>
+    </div>
+    <span id="loading-text">Загрузка: 0%</span>
+</div>
+<!-- СТАРТОВОЕ МЕНЮ -->
+<div id="start-menu" class="hidden">
+    <!-- Фоновый силуэт шахматной фигуры (Ладья) -->
+    <svg class="gm-bg-piece" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+        <path d="M5 20H19V22H5V20ZM5 18V13H7V15H17V13H19V18H5ZM7 11V8H17V11H7ZM5 6H7V4H9V6H11V4H13V6H15V4H17V6H19V8H5V6Z"></path>
+    </svg>
+
+    <div class="gm-menu-content">
+        <!-- Заголовок -->
+        <h1 class="gm-title" id="gm-main-title">Шахматы</h1>
+        
+        <div class="gm-subtitle-container">
+            <div class="gm-line"></div>
+            <div class="gm-subtitle" id="gm-subtitle">EST. 2026 &bull; fishchess</div>
+            <div class="gm-line"></div>
+        </div>
+
+        <!-- Кнопки режимов -->
+<!-- Кнопки режимов в меню -->
+<div class="gm-modes">
+
+    
+<button class="gm-btn gm-btn-secondary" onclick="selectGameMode('chess960')">
+    <span>Фишер 960</span>
+    <div class="gm-menu-icon gm-icon-knight"></div>
+</button>
+
+<button class="gm-btn gm-btn-primary" onclick="startGameVsComputer()">
+    <span>Классика</span>
+    <div class="gm-menu-icon gm-icon-queen"></div>
+</button>
+
+<button class="gm-btn gm-btn-secondary" onclick="selectGameMode('middlegame')">
+    <span>Случайная позиция</span>
+    <div class="gm-menu-icon gm-icon-bishop"></div>
+</button>
+
+<button class="gm-btn gm-btn-secondary" onclick="startFriendGame()">
+    <span>С другом</span>
+    <div class="gm-menu-icon gm-icon-knight"></div> <!-- Можешь поменять иконку -->
+</button>
+
+</div>
+
+        <!-- Инструменты / Настройки -->
+        <div class="gm-tools">
+    <div class="gm-tool-item" onclick="openStatsModal()">
+        <button class="gm-tool-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10M18 20V4M6 20v-4"></path></svg>
+        </button>
+        <span id="label-stats">Статистика</span>
+    </div>
+            
+            <div class="gm-tool-item" onclick="openLeaderboardModal()">
+                <button class="gm-tool-btn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+                </button>
+                <span id="label-rating">Рейтинг</span>
+            </div>
+
+            <div class="gm-tool-item" onclick="toggleTheme()">
+                <button class="gm-tool-btn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.92 0 1.25-.8 1.25-1.25 0-.46-.38-.98-.38-1.5 0-.69.56-1.25 1.25-1.25H16c3.31 0 6-2.69 6-6 0-4.42-4.48-8-10-8z"/></svg>
+                </button>
+                <span id="label-theme">Тема</span>
+            </div>
+            
+<!-- Инструмент Звук в стартовом меню -->
+<div class="gm-tool-item" id="sound-toggle-menu" onclick="toggleSound()">
+    <button class="gm-tool-btn">
+        <!-- Иконка Звук ВКЛ -->
+        <svg class="sound-on-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+        </svg>
+        <!-- Иконка Звук ВЫКЛ (перечеркнутый) -->
+        <svg class="sound-off-icon hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M11 5L6 9H2V15H6L11 19V5Z"></path>
+            <line x1="23" y1="9" x2="17" y2="15" stroke="currentColor" stroke-width="2"></line>
+            <line x1="17" y1="9" x2="23" y2="15" stroke="currentColor" stroke-width="2"></line>
+        </svg>
+    </button>
+    <span id="sound-status-text">Звук</span>
+</div>
+        </div>
+    </div>
+</div>
+<div class="game-container" style="display: none;">
+    
+<div class="side-panel-left">
+<div class="stats-box">
+    <!-- <div class="stats-title">📊 Статистика</div> -->
+
+    <div class="stats-row">
+        <span class="stats-label" id="label-stats-total">Партий сыграно</span>
+        <span class="stats-value" id="stats-total">0</span>
+    </div>
+
+    <div class="stats-bar-wrap">
+        <div class="stats-bar-track">
+            <div id="bar-wins"   style="width:0%; background:#4b9e4b;"></div>
+            <div id="bar-draws"  style="width:0%; background:#9ca3af;"></div>
+            <div id="bar-losses" style="width:0%; background:#da4b4b;"></div>
+        </div>
+<div class="stats-bar-labels">
+    <span class="lbl-win">
+        <span id="label-stats-w">В</span> <span id="stats-wins">0</span>
+    </span>
+    <span class="lbl-draw">
+        <span id="label-stats-d">Н</span> <span id="stats-draws">0</span>
+    </span>
+    <span class="lbl-loss">
+        <span id="label-stats-l">П</span> <span id="stats-losses">0</span>
+    </span>
+</div>
+    </div>
+
+
+    <div class="stats-row highlight">
+        <span class="stats-label" id="label-stats-winrate-text">Win Rate</span>
+        <span class="stats-value" id="stats-winrate">0%</span>
+    </div>
+
+    <div class="stats-color-bars">
+        <div class="stats-color-row">
+            <img src="img/p/wN.svg">
+            <div class="stats-color-track">
+                <div id="bar-white-fill" style="background:#769656;"></div>
+            </div>
+            <span id="bar-white-text" class="stats-color-pct">0%</span>
+        </div>
+        <div class="stats-color-row">
+            <img src="img/p/bN.svg">
+            <div class="stats-color-track">
+                <div id="bar-black-fill" style="background:#769656;"></div>
+            </div>
+            <span id="bar-black-text" class="stats-color-pct">0%</span>
+        </div>
+    </div>
+
+    <div class="stats-streak-row">
+        <span class="stats-label" id="label-stats-streak">Серия</span>
+        <span id="stats-streak" class="stats-streak-val">нет серии</span>
+    </div>
+    <div class="stats-best-row">
+        <span class="stats-label" id="label-stats-best">Лучшая серия</span>
+        <span class="stats-value" id="stats-best-streak">0</span>
+    </div>
+    </div>
+        <div class="advice-box">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1vh;">
+                <div class="advice-title" id="label-top7-title">🏆 Топ 7</div>
+                <span id="label-points-text" style="font-size:1.2vh; color:var(--gray-500); cursor:pointer;">Очки</span>
+            </div>
+            <div id="leaderboard-list" style="display:flex; flex-direction:column; gap:.2vh;"></div>
+        </div>
+    </div>
+
+    <!-- Главная игровая зона (Профили + Доска) -->
+    <div class="main-play-area">
+        
+        <!-- Профиль Компьютера (Сверху) -->
+    <div class="player-profile" id="ai-profile-box">
+        <div class="avatar bg-bot">🤖</div>
+        <div class="profile-info">
+            <div class="name-row">
+                <span class="player-name" id="name-ai">Компьютер</span>
+                <span class="score-diff" id="ai-score-diff"></span>
+            </div>
+            <div class="captures" id="ai-captures"></div>
+        </div>
+        <div class="timer" id="ai-timer">--:--</div> <!-- Добавлено -->
+    </div>
+
+        <div id="board-wrapper">
+            <div id="board" class="chess-board"></div>
+        </div>
+
+        <!-- Профиль Игрока (Снизу) -->
+    <div class="player-profile" id="player-profile-box">
+        <div class="avatar bg-player" id="player-avatar-box"></div>
+        <div class="profile-info">
+            <div class="name-row">
+                <span class="player-name" id="name-player">Игрок</span>
+                <span class="score-diff" id="player-score-diff"></span>
+            </div>
+            <div class="captures" id="player-captures"></div>
+        </div>
+        <div class="timer" id="player-timer">--:--</div> <!-- Добавлено -->
+    </div>
+        
+    </div>
+<!-- Боковая/нижняя панель (Только Кнопки) -->
+    <div class="side-panel">
+
+        <div id="move-history" class="history-container">
+            <div id="history-list" class="history-list"></div>
+        </div>
+
+
+
+<div class="bottom-bar">
+    <!-- 1. Домой -->
+    <button id="home-btn" onclick="goHome()" class="btn-hint btn-secondary">
+        <div class="video-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg></div>
+        <span class="text" id="btn-menu-text">Меню</span>
+    </button>
+
+    <!-- 2. Отмена -->
+    <button id="undo-btn" onclick="undoMove()" class="btn-hint btn-secondary">
+        <div class="video-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12.5 8C9.85 8 7.45 8.99 5.6 10.6L2 7V16H11L7.38 12.38C8.77 11.22 10.54 10.5 12.5 10.5C16.04 10.5 19.05 12.81 20.1 16L22.47 15.22C21.08 11.03 17.15 8 12.5 8Z"/></svg></div>
+        <span class="text" id="btn-undo-text">Отмена</span>
+    </button>
+
+    <!-- 3. ЗАНОГО (Вернули на место)
+    <button id="restart-btn" onclick="restartGame()" class="btn-hint btn-secondary">
+        <div class="video-icon">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
+        </div>
+        <span class="text">Заново</span>
+    </button> -->
+
+    <!-- 4. ИГРАТЬ (Новая игра / Параметры) -->
+    <button id="new-game-btn" onclick="openNewGameModal()" class="btn-hint btn-secondary">
+        <div class="video-icon">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
+        </div>
+        <span class="text" id="btn-play-text">Играть</span>
+    </button>
+
+    <!-- 5. ОФОРМЛЕНИЕ (Шестеренка) -->
+    <button id="settings-btn" onclick="openGeneralSettingsModal()" class="btn-hint btn-secondary">
+        <div class="video-icon">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.06-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.73,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.06,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.43-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.49-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg>
+        </div>
+        <span class="text" id="btn-view-text">Вид</span>
+    </button>
+</div>
+
+</div>
+
+<div id="promotion-dialog" class="hidden">
+    <div class="promotion-box">
+        <div onclick="selectPromotion('q')" class="prom-option" id="prom-q"></div>
+        <div onclick="selectPromotion('r')" class="prom-option" id="prom-r"></div>
+        <div onclick="selectPromotion('b')" class="prom-option" id="prom-b"></div>
+        <div onclick="selectPromotion('n')" class="prom-option" id="prom-n"></div>
+    </div>
+</div>
+
+<div id="drag-follower"></div>
+
+
+</div>
+
+
+
+
+
+
+
+<!-- Модальное окно "Настройки оформления" -->
+<div id="general-settings-modal" class="hidden" style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 5000; display: flex; align-items: center; justify-content: center;">
+    <div class="settings-modal-content">
+        
+
+<!-- Выбор набора фигур -->
+<div class="settings-section">
+    <div id="label-piece-set" class="settings-label">Набор фигур</div>
+    <div class="board-themes-row">
+<div onclick="changePieceSet('default')" class="piece-preview" id="piece-set-default">
+    <div class="piece-cell">
+        <img src="img/p/wB.svg">
+    </div>
+</div>
+<div onclick="changePieceSet('merida')" class="piece-preview" id="piece-set-merida">
+        <div class="piece-cell">
+        <img src="img/p/Merida/Chess_blt45.svg">
+    </div>
+</div>
+    </div>
+</div>
+
+        <!-- Выбор цвета доски -->
+        <div class="settings-section">
+            <div id="label-board-theme" class="settings-label">Цвет доски</div>
+            <div class="board-themes-row">
+                <div onclick="changeBoardTheme('classic')" class="board-theme-preview" id="board-theme-classic">
+                    <div class="sq-p pale"></div><div class="sq-p brown"></div>
+                    <div class="sq-p brown"></div><div class="sq-p pale"></div>
+                </div>
+                <div onclick="changeBoardTheme('green')" class="board-theme-preview" id="board-theme-green">
+                    <div class="sq-p white"></div><div class="sq-p green"></div>
+                    <div class="sq-p green"></div><div class="sq-p white"></div>
+                </div>
+                <div onclick="changeBoardTheme('ash')" class="board-theme-preview" id="board-theme-ash">
+                    <div class="sq-p ash-light"></div><div class="sq-p ash-dark"></div>
+                    <div class="sq-p ash-dark"></div><div class="sq-p ash-light"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Переключатель Темы -->
+        <div class="settings-row" onclick="toggleTheme()">
+            <div class="settings-info">
+                <div id="label-dark-theme" class="settings-row-title">Тёмная тема</div>
+                <div id="label-dark-desc" class="settings-row-desc">Бережет глаза ночью</div>
+            </div>
+            <div class="custom-switch" id="theme-switch">
+                <div class="switch-handle">
+                    <svg class="sun-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg>
+                    <svg class="moon-icon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                </div>
+            </div>
+        </div>
+
+        <!-- Переключатель Звука -->
+        <div class="settings-row" onclick="toggleSound()">
+            <div class="settings-info">
+                <div id="label-sound-effects" class="settings-row-title">Звуковые эффекты</div>
+                <div id="label-sound-desc" class="settings-row-desc">Ходы и взятия</div>
+            </div>
+            <div class="custom-switch" id="sound-switch">
+                <div class="switch-handle">
+                    <svg class="sound-on-svg" viewBox="0 0 24 24"><path d="M11 5L6 9H2V15H6L11 19V5zM19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                    <svg class="sound-off-svg" viewBox="0 0 24 24"><path d="M11 5L6 9H2V15H6L11 19V5zM23 9l-6 6M17 9l6 6"/></svg>
+                </div>
+            </div>
+        </div>
+
+        <button id="btn-settings-done" onclick="closeGeneralSettingsModal()" class="settings-done-btn">Готово</button>
+    </div>
+</div>
+
+
+
+
+
+
+<!-- Модальное окно "Новая игра" -->
+<div id="new-game-modal" class="hidden" style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 5000; display: flex; align-items: center; justify-content: center;">
+    <div style="background: white; padding: 24px; border-radius: 16px; width: 90%; max-width: 350px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+        
+        <h2 id="modal-title" style="margin: 0 0 20px 0; font-size: 24px; color: var(--gray-800);">Настройки игры</h2>
+
+        <!-- Выбор цвета -->
+<!-- Выбор цвета (внутри модального окна) -->
+<div id="color-select-container" style="display: flex; justify-content: center; gap: 2vh; margin-bottom: 24px;">
+    
+    <!-- Белые -->
+    <div class="color-btn" id="color-w" onclick="selectColor('w')">
+        <div class="color-icon white-king-icon"></div>
+    </div>
+
+    <!-- Случайный выбор -->
+    <div class="color-btn" id="color-random" onclick="selectColor('random')">
+        <div class="color-icon random-king-icon"></div>
+    </div>
+
+    <!-- Черные -->
+    <div class="color-btn" id="color-b" onclick="selectColor('b')">
+        <div class="color-icon black-king-icon"></div>
+    </div>
+
+</div>
+
+
+<div style="margin-bottom: 24px;">
+    <div id="modal-time-label" style="font-weight: bold; color: var(--gray-500); margin-bottom: 8px; font-size: 14px; text-transform: uppercase;">Контроль времени</div>
+    <div id="time-options-container">
+        <button class="time-segment-btn" data-time="1" onclick="selectTime(1)">1`</button>
+        <button class="time-segment-btn" data-time="3" onclick="selectTime(3)">3`</button>
+        <button class="time-segment-btn" data-time="5" onclick="selectTime(5)">5`</button>
+        <button class="time-segment-btn" data-time="10" onclick="selectTime(10)">10`</button>
+        <button class="time-segment-btn" data-time="15" onclick="selectTime(15)">15`</button>
+        <button class="time-segment-btn" data-time="0" onclick="selectTime(0)">∞</button>
+    </div>
+</div>
+
+<!-- Внутри new-game-modal под ползунком сложности -->
+<div style="margin-bottom: 24px;">
+    <div id="modal-level-label" style="font-weight: bold; color: var(--gray-500); margin-bottom: 8px; font-size: 14px; text-transform: uppercase;">Выбор противника</div>
+    
+    <input type="range" id="level-slider" min="1" max="10" value="1" step="1" style="width: 100%; accent-color: #494949; margin-bottom: 12px;" oninput="updateLevelText()">
+    
+    <!-- Основное имя (Каламбур) -->
+<div style="display:flex; align-items:center; gap:12px; justify-content: center;">
+    <img id="level-avatar" src="img/avatars/1.png" style="width:44px; height:44px; border-radius:10px;">
+    <div style="text-align:left;">
+        <div id="level-name" style="font-size:22px; font-weight:900; color:var(--gray-800); line-height:1.2;">Бобби Фишечка</div>
+        <div id="level-desc" style="font-size:13px; font-weight:bold; color:#888; margin-top:2px; letter-spacing:0.5px;">Уровень: Новичок</div>
+    </div>
+</div>
+</div>
+
+        
+
+        <!-- Кнопки действий -->
+        <div style="display: flex; gap: 12px;">
+            <button id="btn-to-menu" onclick="goHome()" style="flex: 1; padding: 12px; border-radius: 12px; border: none; color: var(--text-primary); background: var(--gray-200); font-weight: bold; font-size: 16px; cursor: pointer;">В меню</button>
+            <button id="btn-confirm-play" onclick="confirmNewGame()" style="flex: 1; padding: 12px; border-radius: 12px; border: none; background: #3b82f6; color: white; font-weight: bold; font-size: 16px; cursor: pointer;">Играть</button>
+        </div>
+    </div>
+</div>
+
+
+
+
+
+<!-- Модальное окно "Статистика" -->
+<div id="stats-modal" class="hidden" style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 5000; display: flex; align-items: center; justify-content: center;">
+    <div class="stats-modal-card">
+
+        <div class="smc-title" id="modal-stats-title">Статистика</div>
+
+        <div class="smc-row">
+            <span class="smc-label" id="label-modal-total">Партий сыграно</span>
+            <span class="smc-value" id="modal-stats-total">0</span>
+        </div>
+
+        <div class="smc-bar-wrap">
+            <div class="smc-bar-track">
+                <div id="modal-bar-wins"   style="width:0%; background:#16a34a;"></div>
+                <div id="modal-bar-draws"  style="width:0%; background:#9ca3af;"></div>
+                <div id="modal-bar-losses" style="width:0%; background:#ef4444;"></div>
+            </div>
+            <div class="smc-bar-labels">
+                <span class="smc-lbl-win" id="label-modal-w">В <span id="modal-stats-wins">0</span></span>
+                <span class="smc-lbl-draw" id="label-modal-d">Н <span id="modal-stats-draws">0</span></span>
+                <span class="smc-lbl-loss" id="label-modal-l">П <span id="modal-stats-losses">0</span></span>
+            </div>
+        </div>
+
+        <div class="smc-row smc-highlight">
+            <span class="smc-label" id="label-modal-winrate-text">Win Rate</span>
+            <span class="smc-value" id="modal-stats-winrate">0%</span>
+        </div>
+
+        <div class="smc-color-bars">
+            <div class="smc-color-row">
+                <img src="img/p/wN.svg" class="smc-piece">
+                <div class="smc-color-track"><div id="modal-bar-white-fill" style="background:#769656;"></div></div>
+                <span id="modal-bar-white-text" class="smc-pct">0%</span>
+            </div>
+            <div class="smc-color-row">
+                <img src="img/p/bN.svg" class="smc-piece">
+                <div class="smc-color-track"><div id="modal-bar-black-fill" style="background:#769656;"></div></div>
+                <span id="modal-bar-black-text" class="smc-pct">0%</span>
+            </div>
+        </div>
+
+        <div class="smc-row smc-streak-row">
+            <span class="smc-label" id="label-modal-streak">Серия</span>
+            <span id="modal-stats-streak" class="smc-streak-val">—</span>
+        </div>
+        <div class="smc-row">
+            <span class="smc-label" id="label-modal-best">Лучшая серия</span>
+            <span class="smc-value" id="modal-stats-best-streak">0</span>
+        </div>
+
+        <button onclick="closeStatsModal()" class="smc-close-btn" id="btn-stats-close">Закрыть</button>
+    </div>
+</div>
+
+
+
+<!-- Всплывашка о поебед -->
+<div id="game-toast" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); z-index:6000; pointer-events:none;">
+    <div id="game-toast-inner" style="
+        display:flex; align-items:center; gap:12px;
+        padding:14px 22px; border-radius:16px;
+        background:rgba(30,30,30,0.92); color:white;
+        font-size:17px; font-weight:900;
+        box-shadow:0 8px 30px rgba(0,0,0,0.4);
+        backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+        animation: toast-in 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards;
+        white-space: nowrap;
+    ">
+        <!-- <span id="game-toast-icon" style="font-size:24px;"></span> -->
+        <span id="game-toast-text"></span>
+    </div>
+</div>
+
+
+
+
+
+<!-- Модальное окно "Рейтинг" -->
+<div id="leaderboard-modal" class="hidden" style="position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:5000; display:flex; align-items:center; justify-content:center;" onclick="if(event.target===this) closeLeaderboardModal()">
+    <div class="lb-modal-card">
+
+        <!-- <div class="lb-modal-title" id="modal-lb-title">Рейтинг</div> -->
+
+        <!-- Подиум топ-3 -->
+        <div class="lb-podium">
+            <!-- 2 место -->
+            <div class="lb-podium-item lb-podium-2">
+                <div class="lb-podium-medal">🥈</div>
+                <img class="lb-podium-avatar" id="lbm-avatar-2" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=">
+<div class="lb-podium-name" id="lbm-name-2"></div>
+<div class="lb-podium-score" id="lbm-score-2"></div>
+                <div class="lb-podium-base lb-podium-base-2"></div>
+            </div>
+            <!-- 1 место -->
+            <div class="lb-podium-item lb-podium-1">
+                <div class="lb-podium-medal">👑</div>
+                <img class="lb-podium-avatar lb-podium-avatar-1" id="lbm-avatar-1" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=">
+<div class="lb-podium-name" id="lbm-name-1"></div>
+<div class="lb-podium-score" id="lbm-score-1"></div>
+                <div class="lb-podium-base lb-podium-base-1"></div>
+            </div>
+            <!-- 3 место -->
+            <div class="lb-podium-item lb-podium-3">
+                <div class="lb-podium-medal">🥉</div>
+                <img class="lb-podium-avatar" id="lbm-avatar-3" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=">
+<div class="lb-podium-name" id="lbm-name-3"></div>
+<div class="lb-podium-score" id="lbm-score-3"></div>
+                <div class="lb-podium-base lb-podium-base-3"></div>
+            </div>
+        </div>
+
+        <!-- Список 4-7 -->
+        <div id="lb-modal-list" class="lb-modal-list"></div>
+
+        <!-- Разделитель + игрок -->
+        <div class="lb-divider"></div>
+        <div class="lb-row">
+            <span class="lb-place" id="lbm-my-place">12</span>
+            <div class="lb-avatar bg-player"></div>
+            <span class="lb-name me" id="lbm-me-text">Вы</span>
+            <span class="lb-score me" id="lbm-my-score">0</span>
+        </div>
+
+        <button onclick="closeLeaderboardModal()" class="smc-close-btn" id="btn-lb-close">Закрыть</button>
+    </div>
+</div>
+
+<!-- Модальное окно подтверждения выхода -->
+<div id="exit-confirm-modal" class="hidden" style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 7000; display: flex; align-items: center; justify-content: center;">
+    <div style="background: var(--gray-300); padding: 24px; border-radius: 20px; width: 90%; max-width: 330px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+        <p id="label-exit-confirm" style="color: var(--text-primary); font-weight: bold; font-size: 16px; margin-bottom: 24px; line-height: 1.4;"></p>
+        <div style="display: flex; gap: 12px;">
+            <button id="btn-exit-stay" onclick="closeExitModal()" style="flex: 1; padding: 12px; border-radius: 12px; border: none; background: var(--gray-200); color: var(--text-primary); font-weight: bold; cursor: pointer;"></button>
+            <button id="btn-exit-confirm" onclick="forceGoHome()" style="flex: 1; padding: 12px; border-radius: 12px; border: none; background: #ef4444; color: white; font-weight: bold; cursor: pointer;"></button>
+        </div>
+    </div>
+</div>
+
+
+<script src="script.js"></script>
+<script>
+window.addEventListener('load', initVK);
+</script>
+</body>
+</html>
