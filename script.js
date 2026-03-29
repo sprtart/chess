@@ -2948,6 +2948,8 @@ let currentRoomId = null;
 let myColor = 'w'; // По умолчанию создатель играет белыми
 
 function startFriendGame() {
+    return; // Режим игры с другом временно отключён
+    
     isPvPSetup = true; 
     
     // Показываем выбор цвета
