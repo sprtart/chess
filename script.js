@@ -66,9 +66,18 @@ fetch('data/middlegame.json')  // ← обнови путь если нужно
     })
     .catch(err => console.log('middlegame.json не найден:', err));
 
+// Кнопки "Фишер 960" и "Случайная позиция"
 function selectGameMode(mode) {
-    gameMode = mode;
-    startGameVsComputer();
+    isPvPSetup = false;     // Точно НЕ PvP
+    gameMode = mode;        // Режим: chess960 или middlegame
+    
+    // Для этих режимов в модалке тоже нужны настройки
+    const levelLabel = document.getElementById('modal-level-label');
+    if (levelLabel) levelLabel.parentElement.style.display = 'block';
+    
+    // В режиме middlegame (задачи) цвет обычно фиксирован расстановкой, 
+    // но для начала просто откроем настройки
+    openNewGameModal(true);
 }
 
 let game = new Chess(); 
@@ -716,19 +725,28 @@ function initVK() {
             vkUserId = user.id;
             updatePlayerProfileUI();
 
-            // 1. Пытаемся найти roomId в ссылке
+            // --- НАЧАЛО ИСПРАВЛЕНИЯ: УМНЫЙ ПОИСК ROOM ID ---
             const urlParams = new URLSearchParams(window.location.search);
-            const roomId = window.location.hash.replace('#', '') || urlParams.get('room');
+            
+            // Ищем ID везде: в хэше, в параметре room и в системном параметре ВК vk_hash
+            let rawRoomId = window.location.hash.replace('#', '') || 
+                           urlParams.get('room') || 
+                           urlParams.get('vk_hash');
+
+            let roomId = null;
+            if (rawRoomId) {
+                // Очищаем от мусора (ВК иногда приклеивает &... к строке)
+                roomId = rawRoomId.split('&')[0]; 
+            }
+            // --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 
             if (roomId && roomId.startsWith('room_')) {
                 console.log("Умная проверка PvP комнаты:", roomId);
                 
                 if (supabaseClient) {
-                    // Прячем загрузочный экран сразу
                     const loader = document.getElementById('loading-screen');
                     if (loader) loader.style.display = 'none';
 
-                    // Запрашиваем данные комнаты из базы
                     const { data: room, error } = await supabaseClient
                         .from('rooms')
                         .select('*')
@@ -738,17 +756,13 @@ function initVK() {
                     if (room) {
                         const myId = String(vkUserId);
 
-                        // --- ЛОГИКА ОПРЕДЕЛЕНИЯ ЦВЕТА ---
                         if (myId === room.white_id) {
-                            // 1. Ты уже записан как БЕЛЫЙ
                             myColor = 'w';
                         } 
                         else if (myId === room.black_id) {
-                            // 2. Ты уже записан как ЧЕРНЫЙ
                             myColor = 'b';
                         } 
                         else if (!room.black_id && room.white_id) {
-                            // 3. Место ЧЕРНОГО свободно (создатель был белым)
                             myColor = 'b';
                             await supabaseClient.from('rooms').update({ 
                                 black_id: myId,
@@ -757,7 +771,6 @@ function initVK() {
                             }).eq('id', roomId);
                         } 
                         else if (!room.white_id && room.black_id) {
-                            // 4. Место БЕЛОГО свободно (создатель был черным)
                             myColor = 'w';
                             await supabaseClient.from('rooms').update({ 
                                 white_id: myId,
@@ -766,27 +779,20 @@ function initVK() {
                             }).eq('id', roomId);
                         } 
                         else {
-                            // 5. Оба места заняты
                             alert("Эта комната уже заполнена.");
                             showStartMenu();
-                            loadFromCloud(); // На всякий случай грузим обычный режим
+                            loadFromCloud();
                             return;
                         }
 
-                        // Устанавливаем поворот доски
                         isBoardFlipped = (myColor === 'b');
-                        
-                        // Загружаем позицию из базы
                         game.load(room.fen);
-                        
-                        // Заходим в комнату и включаем Realtime
                         joinRoom(roomId);
-                        return; // Выход, чтобы не открывать обычное меню
+                        return; 
                     }
                 }
             }
 
-            // 2. Если PvP не обнаружено — грузим стандартное меню
             loadFromCloud();
             renderLeaderboard();
 
@@ -1151,50 +1157,29 @@ function startNewGame() {
     game = new Chess();
     gameResultData = null;
     
-    // Обработка режимов
+    // --- ВОТ ЭТОТ БЛОК ДОЛЖЕН БЫТЬ ТАКИМ ---
     if (gameMode === 'chess960') {
         const startFen = generateFisher960();
         game.load(startFen);
     } else if (gameMode === 'middlegame' && middlegamesData.length > 0) {
-            const randomPos = middlegamesData[Math.floor(Math.random() * middlegamesData.length)];
-            game.load(randomPos.fen);
-            lastMoveSquares =[];
-            playerColor = game.turn() === 'w' ? 'b' : 'w';
-            isBoardFlipped = (playerColor === 'b');
-        }
+        const randomPos = middlegamesData[Math.floor(Math.random() * middlegamesData.length)];
+        game.load(randomPos.fen);
+        // В задачах цвет игрока определяется тем, чей сейчас ход в позиции
+        playerColor = game.turn(); 
+        isBoardFlipped = (playerColor === 'b');
+    }
 
-    // ОДНА инициализация
+    // История и просмотр
     fenHistory = [game.fen()]; 
     moveHistoryLog = [];
-    movesObjectsLog =[];
+    movesObjectsLog = [];
     currentViewIndex = 0;
     selectedSq = null;
 
-    // Имя и аватарка
-    const val = document.getElementById('level-slider').value;
-    const lvl = aiLevels[val];
-    const levelName = lang === 'ru' ? lvl.nameRu : (lvl.nameEn || lvl.nameRu);
-    document.getElementById('name-ai').textContent = levelName;
-    updatePlayerProfileUI(); // ✅ Один вызов — достаточно
-
-    const currentLvl = document.getElementById('level-slider').value;
-    if (aiLevels[currentLvl].engine === "lozza") {
-        lozzaWorker.postMessage('ucinewgame');
-        lozzaWorker.postMessage('isready');
-    }
-    
-    const loader = document.getElementById('loading-screen');
-    if (loader) loader.style.display = 'none';
-
-    const t = i18n[lang] || i18n.en;
-    const currentPlayerName = (player && player.getName()) ? player.getName().split(' ')[0] : t.player;
-    document.getElementById('name-player').textContent = currentPlayerName;
-
-    // ❌ УДАЛЁН дублирующий блок с playerAvatarBox, который сбрасывал аватарку
-
-    showRandomAdvice();
+    // ... остальной код (таймеры, отрисовка) ...
     renderBoard();
 
+    // Блокируем доску, если сейчас ход бота
     if (game.turn() !== playerColor) {
         isLocked = true;
         setTimeout(makeAiMove, 500);
@@ -1203,8 +1188,6 @@ function startNewGame() {
     }
 
     startTimer();
-    startGameplay();
-    toggleGameOverUI(false);
 }
 
 function generateFisher960() {
@@ -1318,7 +1301,7 @@ function updateLevelText() {
 }
 
 function confirmNewGame() {
-    // Стандартная проверка на поражение при выходе
+    // 1. Сброс старой игры (засчитываем поражение, если бросил)
     if (localStorage.getItem('gameInProgress') === 'true') {
         localStorage.removeItem('gameInProgress');
         updateStats('loss');
@@ -1328,20 +1311,31 @@ function confirmNewGame() {
     stopTimer();
     stopEngines();
 
+    // 2. РАЗВЕТВЛЕНИЕ: PvP или Бот
     if (isPvPSetup) {
-        // ЗАПУСК PVP
+        // Режим игры с другом
         createPvPRoom();
     } else {
-        // ЗАПУСК ОБЫЧНОЙ ИГРЫ (Твой старый код)
+        // Режим против компьютера (Классика, Фишер, Миддлгейм)
+        
+        // Сбрасываем ID комнаты, чтобы ходы не улетали в базу
+        currentRoomId = null; 
+
+        // Если не "задача" (middlegame), выбираем цвет игрока
         if (gameMode !== 'middlegame') {
             playerColor = tempSelectedColor === 'random' ? (Math.random() < 0.5 ? 'w' : 'b') : tempSelectedColor;
             isBoardFlipped = (playerColor === 'b');
         }
-        startNewGame();
+
+        // Берем сложность бота
+        const val = document.getElementById('level-slider').value;
+        const lvl = aiLevels[val];
+        currentAiElo = lvl.elo;
+        currentAiDepth = lvl.depth;
+
+        // ЗАПУСКАЕМ!
+        startNewGame(); 
     }
-    
-    // Возвращаем видимость сложности для следующего раза
-    document.getElementById('modal-level-label').parentElement.style.display = 'block';
 }
 
 
@@ -1378,11 +1372,11 @@ async function createPvPRoom() {
 
     // ТВОЙ_ID_ВК — замени на цифры из настроек приложения
     const appId = '1234567'; 
-    const shareLink = `https://vk.com/app${appId}#${currentRoomId}`;
-    
+    const shareLink = `https://vk.com/app${appId}?room=${currentRoomId}#${currentRoomId}`;
+    console.log("Ссылка для друга:", shareLink);    
     vkBridge.send("VKWebAppShare", { 
         link: shareLink, 
-        message: "Давай сыграем в шахматы! Я выбрал цвет и жду тебя. ♟️" 
+        message: "Давай сыграем в шахматы! Жду твоего хода. ♟️" 
     });
 
     joinRoom(currentRoomId);
@@ -2444,27 +2438,17 @@ function showStartMenu() {
 
 // Кнопка: ИГРАТЬ С КОМПЬЮТЕРОМ
 function startGameVsComputer() {
-    document.getElementById('start-menu').style.display = 'none';
-    document.getElementById('start-menu').classList.add('hidden');
+    isPvPSetup = false;      // Точно НЕ PvP
+    gameMode = 'standard';   // Режим: Стандарт
     
-    document.querySelector('.game-container').style.display = 'flex';
-    updatePlayerProfileUI(); 
-    handleResponsiveLayout();
+    // Показываем настройки сложности (если они были скрыты)
+    const levelLabel = document.getElementById('modal-level-label');
+    if (levelLabel) levelLabel.parentElement.style.display = 'block';
     
-    // ДОБАВЬТЕ ЭТУ СТРОКУ:
-    // Это нарисует начальную позицию за окном настроек, чтобы доска не была пустой
-    if (game.fen() === 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1') {
-        renderBoard(); 
-    }
-
-// Вместо скрытия каждой кнопки отдельно
-if (gameMode === 'middlegame') {
-    document.getElementById('color-select-container').style.display = 'none';
-} else {
+    // Скрываем выбор цвета (если хочешь, чтобы бот сам решал, или оставь flex, если хочешь выбирать)
     document.getElementById('color-select-container').style.display = 'flex';
-}
 
-    openNewGameModal(false); 
+    openNewGameModal(true);
 }
 
 // Кнопка: ДОМОЙ (В меню)
