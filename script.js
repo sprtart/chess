@@ -2904,10 +2904,10 @@ let roomSubscription = null;
 
 function joinRoom(roomId) {
     currentRoomId = roomId;
-    gameMode = 'pvp'; // Новый режим
+    gameMode = 'pvp';
 
-    // Подписываемся на изменения в этой конкретной комнате
-    roomSubscription = supabaseClient
+    // Подписываемся на Realtime изменения в базе
+    const roomChannel = supabaseClient
         .channel(`room_${roomId}`)
         .on('postgres_changes', { 
             event: 'UPDATE', 
@@ -2916,17 +2916,28 @@ function joinRoom(roomId) {
             filter: `id=eq.${roomId}` 
         }, payload => {
             const newData = payload.new;
-            // Если пришел новый FEN и это не наш ход — обновляем доску
+            console.log("Пришел ход от противника:", newData.last_move);
+
+            // Если FEN в базе отличается от нашего — обновляем доску
             if (newData.fen !== game.fen()) {
                 game.load(newData.fen);
                 renderBoard();
                 checkStatus();
-                isLocked = (game.turn() !== myColor); // Блокируем, если не наш ход
+                // Если сейчас ход нашего цвета — разблокируем доску
+                isLocked = (game.turn() !== myColor);
+                
+                // Прокручиваем историю к последнему ходу
+                fenHistory.push(game.fen());
+                currentViewIndex = fenHistory.length - 1;
+                updateMoveHistory();
             }
+            
+            // Если в комнату зашел второй игрок, обновим его аватарку
+            updateOpponentProfileFromRoom();
         })
         .subscribe();
 
-    // Запускаем игру
+    // Переключаем интерфейс в режим игры
     startGameVsFriend();
 }
 
