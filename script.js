@@ -913,13 +913,11 @@ function updateLoadingProgress(percent) {
 }
 
 function showStartAd() {
-    if (isVkMode) {
-        vkBridge.send('VKWebAppShowNativeAds', { ad_format: 'interstitial' })
-            .then(() => showStartMenu())
-            .catch(() => showStartMenu());
-    } else {
-        showStartMenu();
-    }
+    // Реклама временно отключена для тестов
+    console.log("Реклама пропущена (отключено программно)");
+    
+    // Сразу вызываем показ меню
+    showStartMenu();
 }
 
 
