@@ -50,7 +50,22 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 // Изменили название на supabaseClient, чтобы не конфликтовать с библиотекой
 const supabaseClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
-
+let initialRoomId = null;
+try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const vkRef = urlParams.get('vk_ref');
+    if (vkRef && vkRef.match(/^room_[a-z0-9]{9}$/)) {
+        initialRoomId = vkRef;
+    } else {
+        // Фоллбек — ищем в полном URL (для браузера)
+        const fullUrl = decodeURIComponent(window.location.href);
+        const match = fullUrl.match(/room_[a-z0-9]{9}/);
+        if (match) initialRoomId = match[0];
+    }
+    if (initialRoomId) console.log("На старте найден ID комнаты:", initialRoomId);
+} catch (e) {
+    console.error("Ошибка парсинга ссылки при старте", e);
+}
 
 let isPvPSetup = false;
 
@@ -712,7 +727,7 @@ function initVK() {
 
     // 1. МЕНЯЕМ ПОДЗАГОЛОВОК, ЧТОБЫ УБЕДИТЬСЯ В СБРОСЕ КЭША
     const subtitle = document.getElementById('gm-subtitle');
-    if (subtitle) subtitle.textContent = "ВЕРСИЯ: ДЕБАГ 1.0";
+    if (subtitle) subtitle.textContent = "ВЕРСИЯ: ДЕБАГ 2.0";
 
     // 2. СРАЗУ ПОКАЗЫВАЕМ ПОЛНЫЙ URL ПРИ ЗАПУСКЕ
     alert("🔗 Полная ссылка при запуске:\n" + window.location.href);
@@ -736,8 +751,10 @@ function initVK() {
             alert("✅ Профиль ВК получен: " + user.first_name);
 
             // Ищем комнату
-            const match = window.location.href.match(/(room_[a-zA-Z0-9]+)/);
-            const roomId = match ? match[1] : null;
+const urlParams = new URLSearchParams(window.location.search);
+const roomId = urlParams.get('vk_ref') || 
+               (window.location.href.match(/(room_[a-zA-Z0-9]+)/) || [])[1] || 
+               null;
 
             if (roomId) {
                 alert("🔍 НАЙДЕНА КОМНАТА: " + roomId);
@@ -1373,7 +1390,7 @@ async function createPvPRoom() {
     const appId = '54514087'; 
     
     // Формируем чистую ссылку (без ?room=)
-    const shareLink = `https://vk.com/app${appId}#${currentRoomId}`;
+    const shareLink = `https://vk.com/app${appId}?ref=${currentRoomId}`;
     const inviteText = `Давай сыграем в шахматы! Жду твоего хода. ♟️\n${shareLink}`;
 
     console.log("Ссылка для друга:", shareLink);
