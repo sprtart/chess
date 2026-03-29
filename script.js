@@ -1556,13 +1556,17 @@ function finalizeMove(from, to, promotion = 'q') {
     // Если игра не закончена, ход переходит к ИИ
 // Если игра не закончена, ход переходит к ИИ
     if (!checkStatus()) { 
-        isLocked = true; 
-        
-        // Если партия быстрая (<= 3 минут), задержка перед ходом ИИ будет всего 50мс.
-        // Иначе - красивые 600мс для эстетики.
-        let delayBeforeAi = (selectedTimeMinutes > 0 && selectedTimeMinutes <= 3) ? 50 : 600;
-        
-        aiMoveTimeout = setTimeout(makeAiMove, delayBeforeAi); 
+        // Если это НЕ PvP режим — тогда даем сходить компьютеру
+        if (gameMode !== 'pvp') {
+            isLocked = true; 
+            let delayBeforeAi = (selectedTimeMinutes > 0 && selectedTimeMinutes <= 3) ? 50 : 600;
+            aiMoveTimeout = setTimeout(makeAiMove, delayBeforeAi); 
+        } else {
+            // В PvP режиме просто блокируем доску, так как теперь ход противника
+            isLocked = true; 
+            // И отправляем ход в Supabase (этот блок у тебя уже должен быть)
+            syncMoveToSupabase(from, to, promotion);
+        }
     }
 }
 
