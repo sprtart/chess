@@ -738,20 +738,24 @@ function initVK() {
                 myColor = 'b'; // Зашедший по ссылке всегда играет черными
                 isBoardFlipped = true; 
                 
-                if (supabaseClient) {
-                    try {
-                        // Записываем ID игрока как черного
-                        await supabaseClient
-                            .from('rooms')
-                            .update({ black_id: String(vkUserId) })
-                            .eq('id', roomId);
+// Внутри async (user) => { ... } в блоке входа по ссылке
+if (supabaseClient) {
+    try {
+        await supabaseClient
+            .from('rooms')
+            .update({ 
+                black_id: String(vkUserId),
+                black_name: player.first_name,   // Добавили
+                black_avatar: player.photo_100   // Добавили
+            })
+            .eq('id', roomId);
 
-                        joinRoom(roomId); // Функция, которая подпишется на Realtime
-                        return; // Выходим, чтобы не показывать стартовое меню
-                    } catch (e) {
-                        console.error("Ошибка входа в комнату:", e);
-                    }
-                }
+        joinRoom(roomId);
+        return; 
+    } catch (e) {
+        console.error("Ошибка входа в комнату:", e);
+    }
+}
             }
 
             updatePlayerProfileUI();
@@ -2861,14 +2865,14 @@ async function startFriendGame() {
     myColor = 'w'; // Создатель — всегда белые
     
     // 2. Создаем запись в базе Supabase
-const { error } = await supabaseClient.from('rooms').insert({
-    id: currentRoomId,
-    white_id: String(vkUserId),
-    white_name: player.first_name, // Добавили имя
-    white_avatar: player.photo_100, // Добавили аватар
-    fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-    turn: 'w'
-});
+    const { error } = await supabaseClient.from('rooms').insert({
+        id: currentRoomId,
+        white_id: String(vkUserId),
+        white_name: player.first_name, // Добавили имя
+        white_avatar: player.photo_100, // Добавили аватар
+        fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        turn: 'w'
+    });
 
     if (error) {
         alert("Ошибка создания комнаты");
