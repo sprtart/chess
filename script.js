@@ -52,7 +52,7 @@ const supabaseClient = window.supabase ? window.supabase.createClient(SUPABASE_U
 
 
 
-
+let isPvPSetup = false;
 
 let gameMode = 'standard';
 let middlegamesData = [];
@@ -716,40 +716,77 @@ function initVK() {
             vkUserId = user.id;
             updatePlayerProfileUI();
 
-            // 1. Ищем roomId
+            // 1. Пытаемся найти roomId в ссылке
             const urlParams = new URLSearchParams(window.location.search);
             const roomId = window.location.hash.replace('#', '') || urlParams.get('room');
 
             if (roomId && roomId.startsWith('room_')) {
-                console.log("Пытаемся зайти в комнату:", roomId);
-                myColor = 'b';
-                isBoardFlipped = true; 
+                console.log("Умная проверка PvP комнаты:", roomId);
                 
                 if (supabaseClient) {
-                    // Скрываем загрузчик сразу
-                    if (document.getElementById('loading-screen')) 
-                        document.getElementById('loading-screen').style.display = 'none';
+                    // Прячем загрузочный экран сразу
+                    const loader = document.getElementById('loading-screen');
+                    if (loader) loader.style.display = 'none';
 
-                    try {
-                        await supabaseClient
-                            .from('rooms')
-                            .update({ 
-                                black_id: String(vkUserId),
+                    // Запрашиваем данные комнаты из базы
+                    const { data: room, error } = await supabaseClient
+                        .from('rooms')
+                        .select('*')
+                        .eq('id', roomId)
+                        .single();
+
+                    if (room) {
+                        const myId = String(vkUserId);
+
+                        // --- ЛОГИКА ОПРЕДЕЛЕНИЯ ЦВЕТА ---
+                        if (myId === room.white_id) {
+                            // 1. Ты уже записан как БЕЛЫЙ
+                            myColor = 'w';
+                        } 
+                        else if (myId === room.black_id) {
+                            // 2. Ты уже записан как ЧЕРНЫЙ
+                            myColor = 'b';
+                        } 
+                        else if (!room.black_id && room.white_id) {
+                            // 3. Место ЧЕРНОГО свободно (создатель был белым)
+                            myColor = 'b';
+                            await supabaseClient.from('rooms').update({ 
+                                black_id: myId,
                                 black_name: player.first_name,
                                 black_avatar: player.photo_100
-                            })
-                            .eq('id', roomId);
+                            }).eq('id', roomId);
+                        } 
+                        else if (!room.white_id && room.black_id) {
+                            // 4. Место БЕЛОГО свободно (создатель был черным)
+                            myColor = 'w';
+                            await supabaseClient.from('rooms').update({ 
+                                white_id: myId,
+                                white_name: player.first_name,
+                                white_avatar: player.photo_100
+                            }).eq('id', roomId);
+                        } 
+                        else {
+                            // 5. Оба места заняты
+                            alert("Эта комната уже заполнена.");
+                            showStartMenu();
+                            loadFromCloud(); // На всякий случай грузим обычный режим
+                            return;
+                        }
 
+                        // Устанавливаем поворот доски
+                        isBoardFlipped = (myColor === 'b');
+                        
+                        // Загружаем позицию из базы
+                        game.load(room.fen);
+                        
+                        // Заходим в комнату и включаем Realtime
                         joinRoom(roomId);
-                        // ОЧЕНЬ ВАЖНО: Мы НЕ вызываем loadFromCloud здесь, чтобы не открылось меню
-                        return; 
-                    } catch (e) {
-                        console.error("Ошибка входа:", e);
+                        return; // Выход, чтобы не открывать обычное меню
                     }
                 }
             }
 
-            // 2. Если ссылки нет — грузим как обычно
+            // 2. Если PvP не обнаружено — грузим стандартное меню
             loadFromCloud();
             renderLeaderboard();
 
@@ -1281,7 +1318,7 @@ function updateLevelText() {
 }
 
 function confirmNewGame() {
-    // Если игра шла — засчитываем поражение
+    // Стандартная проверка на поражение при выходе
     if (localStorage.getItem('gameInProgress') === 'true') {
         localStorage.removeItem('gameInProgress');
         updateStats('loss');
@@ -1291,17 +1328,65 @@ function confirmNewGame() {
     stopTimer();
     stopEngines();
 
-    if (gameMode !== 'middlegame') {
-        playerColor = tempSelectedColor === 'random' ? (Math.random() < 0.5 ? 'w' : 'b') : tempSelectedColor;
-        isBoardFlipped = (playerColor === 'b');
+    if (isPvPSetup) {
+        // ЗАПУСК PVP
+        createPvPRoom();
+    } else {
+        // ЗАПУСК ОБЫЧНОЙ ИГРЫ (Твой старый код)
+        if (gameMode !== 'middlegame') {
+            playerColor = tempSelectedColor === 'random' ? (Math.random() < 0.5 ? 'w' : 'b') : tempSelectedColor;
+            isBoardFlipped = (playerColor === 'b');
+        }
+        startNewGame();
+    }
+    
+    // Возвращаем видимость сложности для следующего раза
+    document.getElementById('modal-level-label').parentElement.style.display = 'block';
+}
+
+
+async function createPvPRoom() {
+    currentRoomId = 'room_' + Math.random().toString(36).substr(2, 9);
+    gameMode = 'pvp';
+    selectedTimeMinutes = 0; // Игра без времени
+
+    // Определяем цвет
+    let creatorColor = tempSelectedColor; 
+    if (creatorColor === 'random') {
+        creatorColor = Math.random() < 0.5 ? 'w' : 'b';
+    }
+    myColor = creatorColor;
+
+    // Подготавливаем данные для комнаты
+    // Если мы выбрали Белых, записываем себя в white_id, если Черных — в black_id
+    const roomData = {
+        id: currentRoomId,
+        fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        turn: 'w',
+        time_limit: 0,
+        [myColor === 'w' ? 'white_id' : 'black_id']: String(vkUserId),
+        [myColor === 'w' ? 'white_name' : 'black_name']: player.first_name,
+        [myColor === 'w' ? 'white_avatar' : 'black_avatar']: player.photo_100
+    };
+
+    const { error } = await supabaseClient.from('rooms').insert(roomData);
+
+    if (error) {
+        alert("Ошибка создания: " + error.message);
+        return;
     }
 
-    const val = document.getElementById('level-slider').value;
-    localStorage.setItem('chess-ai-level', val);
-    currentAiElo = aiLevels[val].elo;
-    currentAiDepth = aiLevels[val].depth;
+    // ТВОЙ_ID_ВК — замени на цифры из настроек приложения
+    const appId = '1234567'; 
+    const shareLink = `https://vk.com/app${appId}#${currentRoomId}`;
+    
+    vkBridge.send("VKWebAppShare", { 
+        link: shareLink, 
+        message: "Давай сыграем в шахматы! Я выбрал цвет и жду тебя. ♟️" 
+    });
 
-    startNewGame();
+    joinRoom(currentRoomId);
+    isPvPSetup = false; // Сбрасываем флаг для бота
 }
 
 
@@ -2385,6 +2470,7 @@ if (gameMode === 'middlegame') {
 // Кнопка: ДОМОЙ (В меню)
 // 1. Нажатие на кнопку "Домой"
 function goHome() {
+    isPvPSetup = false;
     const isGameActive = localStorage.getItem('gameInProgress') === 'true' && !game.game_over() && fenHistory.length > 1;
 
     if (isGameActive) {
@@ -2849,54 +2935,57 @@ document.addEventListener('visibilitychange', () => {
 let currentRoomId = null;
 let myColor = 'w'; // По умолчанию создатель играет белыми
 
-async function startFriendGame() {
-    // 1. Создаем уникальный ID комнаты (простой рандом)
-    currentRoomId = 'room_' + Math.random().toString(36).substr(2, 9);
-    myColor = 'w'; // Создатель — всегда белые
-    gameMode = 'pvp'; // Устанавливаем режим PvP
+function startFriendGame() {
+    isPvPSetup = true; 
+    
+    // Показываем выбор цвета
+    document.getElementById('color-select-container').style.display = 'flex';
+    // Прячем выбор сложности (ползунок и имя бота), так как играем с человеком
+    document.getElementById('modal-level-label').parentElement.style.display = 'none';
+    
+    // Принудительно ставим время на 0 (бесконечность)
+    selectTime(0); 
 
-    // 2. Создаем запись в базе Supabase
-    // ВАЖНО: Убедись, что колонки white_name и white_avatar созданы в Supabase!
-    const { error } = await supabaseClient.from('rooms').insert({
-        id: currentRoomId,
-        white_id: String(vkUserId),
-        white_name: (player && player.first_name) ? player.first_name : "Игрок",
-        white_avatar: (player && player.photo_100) ? player.photo_100 : "img/avatars/1.png",
-        fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-        turn: 'w'
-    });
-
-    if (error) {
-        console.error("Supabase Error:", error.message);
-        alert("Ошибка создания комнаты: " + error.message);
-        return;
-    }
-
-    // 3. Формируем ссылку (ЗАМЕНИ 1234567 НА СВОЙ ID)
-    const appId = '54514087'; // Твой ID из настроек ВК
-    const shareLink = `https://vk.com/app${appId}#${currentRoomId}`;
-
-    // 4. Открываем окно "Поделиться" в ВК
-    vkBridge.send("VKWebAppShare", {
-        link: shareLink,
-        message: "Давай сыграем в шахматы! Я жду твоего хода. ♟️"
-    });
-
-    // 5. Заходим в комнату и подписываемся на Realtime
-    joinRoom(currentRoomId);
+    openNewGameModal(true);
 }
-
 
 
 
 
 let roomSubscription = null;
 
-function joinRoom(roomId) {
-    console.log("Выполняется joinRoom для комнаты:", roomId);
+async function joinRoom(roomId) {
+    console.log("Выполняется синхронизация с комнатой:", roomId);
     currentRoomId = roomId;
     gameMode = 'pvp';
 
+    if (!supabaseClient) return;
+
+    // 1. РАЗОВЫЙ ЗАПРОС: Берем актуальное состояние прямо сейчас
+    const { data: room, error } = await supabaseClient
+        .from('rooms')
+        .select('*')
+        .eq('id', roomId)
+        .single();
+
+if (room) {
+    selectedTimeMinutes = room.time_limit || 0;
+    console.log("Установлен лимит времени из базы:", selectedTimeMinutes);
+    
+    // Обновляем таймеры на экране
+    if (selectedTimeMinutes > 0) {
+        playerTimeLeft = selectedTimeMinutes * 60;
+        aiTimeLeft = selectedTimeMinutes * 60;
+    }
+    
+    // Если создатель выбрал черный цвет, значит мы (гость) будем БЕЛЫМИ
+    if (!myColor) { // Если цвет еще не определен (мы гость)
+        if (room.white_id && !room.black_id) myColor = 'b';
+        else if (room.black_id && !room.white_id) myColor = 'w';
+    }
+}
+
+    // 2. ПОДПИСКА: Теперь слушаем будущие изменения
     const roomChannel = supabaseClient
         .channel(`room_${roomId}`)
         .on('postgres_changes', { 
@@ -2906,44 +2995,92 @@ function joinRoom(roomId) {
             filter: `id=eq.${roomId}` 
         }, payload => {
             const newData = payload.new;
+            
+            // Если пришел новый ход
             if (newData.fen !== game.fen()) {
                 game.load(newData.fen);
                 renderBoard();
                 checkStatus();
                 isLocked = (game.turn() !== myColor);
                 
-                // Обновляем историю
+                // Добавляем в историю
                 fenHistory.push(game.fen());
                 currentViewIndex = fenHistory.length - 1;
                 updateMoveHistory();
+                playSound(audioMove);
             }
+            
+            // Если обновились данные игрока (например, зашел второй)
             updateOpponentProfileFromRoom();
         })
         .subscribe();
 
-    startGameVsFriend();
+    // Переключаем экран (ВАЖНО: передаем true, чтобы игра знала, что доску сбрасывать НЕ НАДО)
+    startGameVsFriend(true);
 }
 
-function startGameVsFriend() {
+function startGameVsFriend(isResumed = false) {
     console.log("Выполняется startGameVsFriend, переключаем экран...");
     
-    // Прячем ВСЕ возможные меню
-    document.getElementById('start-menu').style.display = 'none';
-    document.getElementById('start-menu').classList.add('hidden');
-    document.getElementById('new-game-modal').style.display = 'none'; // На всякий случай
+    // 1. Прячем все возможные меню и модалки
+    const startMenu = document.getElementById('start-menu');
+    if (startMenu) {
+        startMenu.style.display = 'none';
+        startMenu.classList.add('hidden');
+    }
     
-    // Показываем контейнер игры
-    document.querySelector('.game-container').style.display = 'flex';
+    const newGameModal = document.getElementById('new-game-modal');
+    if (newGameModal) {
+        newGameModal.style.display = 'none';
+        newGameModal.classList.add('hidden');
+    }
+    
+    // 2. Показываем контейнер игры
+    const gameContainer = document.querySelector('.game-container');
+    if (gameContainer) {
+        gameContainer.style.display = 'flex';
+    }
 
-    game = new Chess();
+    // 3. Логика инициализации движка
+    // Если это НОВАЯ игра (isResumed = false), создаем чистую доску
+    // Если игра ВОЗОБНОВЛЕНА (isResumed = true), используем то, что уже загружено в game
+    if (!isResumed) {
+        game = new Chess();
+        fenHistory = [game.fen()]; 
+        moveHistoryLog = [];
+        movesObjectsLog = [];
+        currentViewIndex = 0;
+        console.log("Создана новая чистая партия");
+    } else {
+        // Если возобновляем, проверяем, чтобы история не была пустой
+        if (fenHistory.length === 0) {
+            fenHistory = [game.fen()];
+            currentViewIndex = 0;
+        }
+        console.log("Продолжаем существующую партию из базы");
+    }
+
+    // 4. Настройка цветов и блокировки
+    // myColor устанавливается в startFriendGame (w) или в initVK (b/w при перезаходе)
     playerColor = myColor; 
     isBoardFlipped = (playerColor === 'b');
+    
+    // Блокируем доску, если сейчас ход противника
     isLocked = (game.turn() !== playerColor);
 
+    // 5. Отрисовка интерфейса
+    handleResponsiveLayout();
     renderBoard();
     updatePlayerProfileUI();
-    updateOpponentProfileFromRoom();
-    console.log("Экран PvP готов. Мой цвет:", myColor);
+    updateOpponentProfileFromRoom(); // Подтягиваем имя и фото противника
+    
+    // Сбрасываем интерфейс "Конец игры", если он висел
+    toggleGameOverUI(false);
+    
+    // Обновляем список ходов (если зашли в середине партии)
+    updateMoveHistory();
+
+    console.log("Экран PvP готов. Мой цвет:", playerColor, "Ход заблокирован:", isLocked);
 }
 
 
