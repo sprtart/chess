@@ -2863,25 +2863,28 @@ async function startFriendGame() {
     // 1. Создаем уникальный ID комнаты (простой рандом)
     currentRoomId = 'room_' + Math.random().toString(36).substr(2, 9);
     myColor = 'w'; // Создатель — всегда белые
-    
+    gameMode = 'pvp'; // Устанавливаем режим PvP
+
     // 2. Создаем запись в базе Supabase
+    // ВАЖНО: Убедись, что колонки white_name и white_avatar созданы в Supabase!
     const { error } = await supabaseClient.from('rooms').insert({
         id: currentRoomId,
         white_id: String(vkUserId),
-        white_name: player.first_name, // Добавили имя
-        white_avatar: player.photo_100, // Добавили аватар
+        white_name: (player && player.first_name) ? player.first_name : "Игрок",
+        white_avatar: (player && player.photo_100) ? player.photo_100 : "img/avatars/1.png",
         fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
         turn: 'w'
     });
 
     if (error) {
-        alert("Ошибка создания комнаты");
+        console.error("Supabase Error:", error.message);
+        alert("Ошибка создания комнаты: " + error.message);
         return;
     }
 
-    // 3. Формируем ссылку. 
-    // В ВК параметры передаются через хэш (#) или в строке запроса.
-    const shareLink = `https://vk.com/appТВОЙ_ID#${currentRoomId}`;
+    // 3. Формируем ссылку (ЗАМЕНИ 1234567 НА СВОЙ ID)
+    const appId = '54514087'; // Твой ID из настроек ВК
+    const shareLink = `https://vk.com/app${appId}#${currentRoomId}`;
 
     // 4. Открываем окно "Поделиться" в ВК
     vkBridge.send("VKWebAppShare", {
@@ -2889,7 +2892,7 @@ async function startFriendGame() {
         message: "Давай сыграем в шахматы! Я жду твоего хода. ♟️"
     });
 
-    // Начинаем слушать комнату (ждем подключения второго игрока)
+    // 5. Заходим в комнату и подписываемся на Realtime
     joinRoom(currentRoomId);
 }
 
