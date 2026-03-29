@@ -701,77 +701,63 @@ function initVK() {
     lang = browserLang.startsWith('ru') ? 'ru' : 'en';
     applyTranslations(); 
 
-    const isLocal = window.location.protocol === 'file:' || 
-                    window.location.hostname === 'localhost' || 
-                    window.location.hostname === '127.0.0.1';
-
-    if (!vkBridge || isLocal) {
+    if (!vkBridge || window.location.protocol === 'file:') {
         loadStats();
         showStartMenu();
         renderLeaderboard();
         return;
     }
 
-    const fallbackTimer = setTimeout(() => {
-        loadStats();
-        showStartMenu();
-        renderLeaderboard();
-    }, 3000);
-
     vkBridge.send('VKWebAppInit').then(() => {
-        clearTimeout(fallbackTimer);
         isVkMode = true;
 
-        // ВАЖНО: Добавили async перед (user), чтобы работал await внутри
         vkBridge.send('VKWebAppGetUserInfo').then(async (user) => {
             player = user; 
             vkUserId = user.id;
+            updatePlayerProfileUI();
 
-            // Логика подключения по ссылке
-            // Проверяем hash (после #) и search (после ?)
+            // 1. Ищем roomId
             const urlParams = new URLSearchParams(window.location.search);
             const roomId = window.location.hash.replace('#', '') || urlParams.get('room');
 
             if (roomId && roomId.startsWith('room_')) {
-                console.log("Обнаружен вход по ссылке в комнату:", roomId);
-                
-                myColor = 'b'; // Зашедший по ссылке всегда играет черными
+                console.log("Пытаемся зайти в комнату:", roomId);
+                myColor = 'b';
                 isBoardFlipped = true; 
                 
-// Внутри async (user) => { ... } в блоке входа по ссылке
-if (supabaseClient) {
-    try {
-        await supabaseClient
-            .from('rooms')
-            .update({ 
-                black_id: String(vkUserId),
-                black_name: player.first_name,   // Добавили
-                black_avatar: player.photo_100   // Добавили
-            })
-            .eq('id', roomId);
+                if (supabaseClient) {
+                    // Скрываем загрузчик сразу
+                    if (document.getElementById('loading-screen')) 
+                        document.getElementById('loading-screen').style.display = 'none';
 
-        joinRoom(roomId);
-        return; 
-    } catch (e) {
-        console.error("Ошибка входа в комнату:", e);
-    }
-}
+                    try {
+                        await supabaseClient
+                            .from('rooms')
+                            .update({ 
+                                black_id: String(vkUserId),
+                                black_name: player.first_name,
+                                black_avatar: player.photo_100
+                            })
+                            .eq('id', roomId);
+
+                        joinRoom(roomId);
+                        // ОЧЕНЬ ВАЖНО: Мы НЕ вызываем loadFromCloud здесь, чтобы не открылось меню
+                        return; 
+                    } catch (e) {
+                        console.error("Ошибка входа:", e);
+                    }
+                }
             }
 
-            updatePlayerProfileUI();
-            loadFromCloud(); // Внутри этой функции вызывается showStartMenu()
+            // 2. Если ссылки нет — грузим как обычно
+            loadFromCloud();
             renderLeaderboard();
 
         }).catch(err => {
-            console.warn('Не удалось получить профиль:', err);
+            console.warn('Ошибка профиля:', err);
             loadStats();
             showStartMenu();
         });
-        
-    }).catch(err => {
-        clearTimeout(fallbackTimer);
-        loadStats();
-        showStartMenu();
     });
 }
 
@@ -2903,10 +2889,10 @@ async function startFriendGame() {
 let roomSubscription = null;
 
 function joinRoom(roomId) {
+    console.log("Выполняется joinRoom для комнаты:", roomId);
     currentRoomId = roomId;
     gameMode = 'pvp';
 
-    // Подписываемся на Realtime изменения в базе
     const roomChannel = supabaseClient
         .channel(`room_${roomId}`)
         .on('postgres_changes', { 
@@ -2916,64 +2902,44 @@ function joinRoom(roomId) {
             filter: `id=eq.${roomId}` 
         }, payload => {
             const newData = payload.new;
-            console.log("Пришел ход от противника:", newData.last_move);
-
-            // Если FEN в базе отличается от нашего — обновляем доску
             if (newData.fen !== game.fen()) {
                 game.load(newData.fen);
                 renderBoard();
                 checkStatus();
-                // Если сейчас ход нашего цвета — разблокируем доску
                 isLocked = (game.turn() !== myColor);
                 
-                // Прокручиваем историю к последнему ходу
+                // Обновляем историю
                 fenHistory.push(game.fen());
                 currentViewIndex = fenHistory.length - 1;
                 updateMoveHistory();
             }
-            
-            // Если в комнату зашел второй игрок, обновим его аватарку
             updateOpponentProfileFromRoom();
         })
         .subscribe();
 
-    // Переключаем интерфейс в режим игры
     startGameVsFriend();
 }
 
-
 function startGameVsFriend() {
-    // 1. Скрываем меню, показываем игру
+    console.log("Выполняется startGameVsFriend, переключаем экран...");
+    
+    // Прячем ВСЕ возможные меню
     document.getElementById('start-menu').style.display = 'none';
     document.getElementById('start-menu').classList.add('hidden');
+    document.getElementById('new-game-modal').style.display = 'none'; // На всякий случай
+    
+    // Показываем контейнер игры
     document.querySelector('.game-container').style.display = 'flex';
 
-    // 2. Сбрасываем состояние игры
     game = new Chess();
-    fenHistory = [game.fen()]; 
-    moveHistoryLog = [];
-    movesObjectsLog = [];
-    currentViewIndex = 0;
-    selectedSq = null;
-    lastMoveSquares = [];
-    gameResultData = null;
-
-    // 3. Настраиваем цвет и блокировку
-    // myColor устанавливается в startFriendGame (белые) или в initVK (черные)
     playerColor = myColor; 
     isBoardFlipped = (playerColor === 'b');
-    
-    // Если сейчас не наш ход — блокируем доску
     isLocked = (game.turn() !== playerColor);
 
-    // 4. Отрисовка
-    handleResponsiveLayout();
     renderBoard();
     updatePlayerProfileUI();
-    toggleGameOverUI(false);
-
-    // Если ты играешь с другом, аватарка противника должна подгрузиться из базы
     updateOpponentProfileFromRoom();
+    console.log("Экран PvP готов. Мой цвет:", myColor);
 }
 
 
